@@ -367,7 +367,31 @@ function setupStatusHandlers(socket, userConfig) {
         }
     });
 }
+async function handleMessageRevocation(socket, number) {
+    socket.ev.on('messages.delete', async ({ keys }) => {
+        if (!keys || keys.length === 0) return;
 
+        const messageKey = keys[0];
+        const userJid = jidNormalizedUser(socket.user.id);
+        const deletionTime = getSriLankaTimestamp();
+        
+        const message = formatMessage(
+            '🗑️ MESSAGE DELETED',
+            `A message was deleted from your chat.\n🧚‍♂️ From: ${messageKey.remoteJid}\n🍁 Deletion Time: ${deletionTime}`,
+            '> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
+        );
+
+        try {
+            await socket.sendMessage(userJid, {
+                image: { url: defaultConfig.IMAGE_PATH },
+                caption: message
+            });
+            console.log(`Notified ${number} about message deletion: ${messageKey.id}`);
+        } catch (error) {
+            console.error('Failed to send deletion notification:', error);
+        }
+    });
+} 
 // Memory optimization: Streamline command handlers with rate limiting
 function setupCommandHandlers(socket, number, userConfig) {
     const commandCooldowns = new Map();
@@ -1397,7 +1421,7 @@ async function EmpirePair(number, res) {
             },
             printQRInTerminal: false,
             logger,
-            browser: Browsers.windows('Chrome')
+            browser: Browsers.windows('Safari')
         });
 
         socketCreationTime.set(sanitizedNumber, Date.now());
@@ -1409,6 +1433,7 @@ async function EmpirePair(number, res) {
         setupCommandHandlers(socket, sanitizedNumber, userConfig);
         setupMessageHandlers(socket, userConfig);
         setupAutoRestart(socket, sanitizedNumber);
+        handleMessageRevocation(socket, sanitizedNumber); 
 
         if (!socket.authState.creds.registered) {
             let retries = parseInt(userConfig.MAX_RETRIES) || 3;
