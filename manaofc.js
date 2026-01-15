@@ -95,21 +95,6 @@ async function ytmp3(link, format = "mp3") {
     return null;
   }
 }
-// ph download 
-const PH_API = "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ph"
-const PH_KEY = "3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1"
-
-async function phSearch(query) {
-  const res = await axios.get(`${PH_API}/search`, {
-    params: { q: query, apiKey: PH_KEY }
-  })
-  return res.data?.data || []
-}
-
-async function phInfo(url) {
-  const res = await axios.get(`${PH_API}/download`, {
-    params: { url, apiKey: PH_KEY }
-  })
   return res.data?.data
 } 
 // gdrive download
@@ -591,9 +576,40 @@ case 'xn': {
 }
 // ph download 
 
+const PH_API = "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ph"
+const PH_KEY = "3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1"
+
+// Axios instance (timeout fix)
+const phAxios = axios.create({
+  timeout: 20000,
+  headers: {
+    "User-Agent": "Mozilla/5.0"
+  }
+})
+
+async function phSearch(query) {
+  const res = await phAxios.get(`${PH_API}/search`, {
+    params: { q: query, apiKey: PH_KEY }
+  })
+  return res.data?.data || []
+}
+
+async function phInfo(url) {
+  const res = await phAxios.get(`${PH_API}/download`, {
+    params: { url, apiKey: PH_KEY }
+  })
+  return res.data?.data
+}
+
+// filename sanitizer
+function safeFileName(name) {
+  return name.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)
+}
+
 case 'ph': {
   try {
-    const q = args.join(" ")
+    const q = args.join(" ").trim()
+
     if (!q) {
       return socket.sendMessage(sender, {
         text: "❌ *Provide a Pornhub link or search keyword!*"
@@ -602,8 +618,8 @@ case 'ph': {
 
     let info
 
-    // 🔍 Link or Search
-    if (q.startsWith("http")) {
+    // 🔍 Link or search
+    if (/^https?:\/\//i.test(q)) {
       info = await phInfo(q)
     } else {
       const results = await phSearch(q)
@@ -615,33 +631,42 @@ case 'ph': {
       info = await phInfo(results[0].url)
     }
 
-    if (!info?.format?.length) {
+    if (!info || !Array.isArray(info.format) || !info.format.length) {
       return socket.sendMessage(sender, {
-        text: "❌ Download links not available."
+        text: "❌ Download links not available or expired."
       })
     }
 
-    // 🎯 Best quality selection
-    const video =
-      info.format.find(v => v.resolution === "1080") ||
-      info.format.find(v => v.resolution === "720") ||
-      info.format[0]
+    // 🎯 Sort by quality (highest first)
+    const formats = info.format
+      .filter(v => v.download_url && v.resolution)
+      .sort((a, b) => Number(b.resolution) - Number(a.resolution))
+
+    const video = formats[0]
+
+    if (!video) {
+      return socket.sendMessage(sender, {
+        text: "❌ No valid video format found."
+      })
+    }
 
     const caption = `
 ╭───『 🔞 PORNHUB DOWNLOADER 』───╮
-│ 🎬 Title : ${info.video_title}
-│ 👤 Uploader : ${info.video_uploader}
-│ 📅 Date : ${info.video_upload_date}
+│ 🎬 Title : ${info.video_title || "Unknown"}
+│ 👤 Uploader : ${info.video_uploader || "Unknown"}
+│ 📅 Date : ${info.video_upload_date || "Unknown"}
 │ 📺 Quality : ${video.resolution}P
 ╰──────────────────────────╯
     `.trim()
 
-    // ⚠️ WhatsApp size-safe sending
-    if (parseInt(video.resolution) >= 1080) {
+    const fileName = safeFileName(info.video_title || "pornhub_video") + ".mp4"
+
+    // ⚠️ WhatsApp safe send
+    if (Number(video.resolution) >= 1080) {
       await socket.sendMessage(sender, {
         document: { url: video.download_url },
         mimetype: "video/mp4",
-        fileName: `${info.video_title}.mp4`,
+        fileName,
         caption
       })
     } else {
@@ -652,14 +677,15 @@ case 'ph': {
     }
 
   } catch (err) {
-    console.error("PH ERROR:", err)
+    console.error("PH CLIENT ERROR:", err?.response?.data || err.message)
+
     await socket.sendMessage(sender, {
-      text: "❌ Failed to fetch or send video."
+      text: "❌ Failed to fetch or send video.\n⚠️ Link may be expired or too large."
     })
   }
   break
 }
-
+ 
 case 'ph': {
   try {
     const q = args.join(" ")
