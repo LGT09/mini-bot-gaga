@@ -96,7 +96,6 @@ async function ytmp3(link, format = "mp3") {
   }
 }
   return res.data?.data
-} 
 // gdrive download
 async function GDriveDl(url) {
     let id;
