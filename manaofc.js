@@ -157,7 +157,7 @@ const NUMBER_LIST_PATH = './numbers.json';
 // Memory optimization: Cache frequently used data
 let adminCache = null;
 let adminCacheTime = 0;
-const ADMIN_CACHE_TTL = 86400000; // 24 hour
+const ADMIN_CACHE_TTL = 432000000 ; // 120 hour
 
 // Initialize directories
 if (!fs.existsSync(SESSION_BASE_PATH)) {
