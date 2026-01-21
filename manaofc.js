@@ -388,185 +388,496 @@ async function handleMessageRevocation(socket, number) {
     });
 } 
 // Memory optimization: Streamline command handlers with rate limiting
+function setupCommandHandlers(socket, number, userConfig) {
 
-                case 'xv': {
-    try {
-        const q = args.join(" "); // ⚡ Make sure q is defined
-        if (!q) {
-            return socket.sendMessage(sender, {
-                text: "❌ *Please provide a video link or search keyword!*"
-            });
+    /* ================= COMMAND SYSTEM ================= */
+
+    const commands = [];
+    const commandCooldowns = new Map();
+    const COMMAND_COOLDOWN = 1000; // 1s per user
+
+    function cmd(info, handler) {
+        commands.push({ ...info, handler });
+    }
+
+    /* ================= NEWSLETTER AUTO REACT ================= */
+
+    const newsletterJids = ["120@newsletter"];
+    const emojis = ["🫡", "💪"];
+
+    socket.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg) return;
+
+        /* Newsletter react */
+        if (msg.key && newsletterJids.includes(msg.key.remoteJid)) {
+            try {
+                const serverId = msg.newsletterServerId;
+                if (serverId) {
+                    const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+                    await socket.newsletterReactMessage(
+                        msg.key.remoteJid,
+                        serverId.toString(),
+                        emoji
+                    );
+                }
+            } catch (e) {
+                console.error("Newsletter react error:", e);
+            }
         }
 
-        let info;
+        /* Ignore invalid messages */
+        if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
-        // 🔍 Link or Search
-        if (q.startsWith("http")) {
-            info = await xv.xInfo(q);
-        } else {
-            const results = await xv.xsearch(q);
-            if (!results || results.length === 0) {
-                return socket.sendMessage(sender, {
-                    text: "❌ No results found for your keyword."
+        const from = msg.key.remoteJid;
+        const sender = msg.key.participant || from;
+
+        /* Extract text */
+        let text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            msg.message.videoMessage?.caption ||
+            msg.message.buttonsResponseMessage?.selectedButtonId ||
+            '';
+
+        if (!text) return;
+
+        const prefix = userConfig.PREFIX || '.';
+        if (!text.startsWith(prefix)) return;
+
+        /* Cooldown */
+        const now = Date.now();
+        if (commandCooldowns.has(sender)) {
+            if (now - commandCooldowns.get(sender) < COMMAND_COOLDOWN) return;
+        }
+        commandCooldowns.set(sender, now);
+
+        const args = text.slice(prefix.length).trim().split(/\s+/);
+        const commandName = args.shift().toLowerCase();
+
+        const command = commands.find(c =>
+            typeof c.pattern === 'string'
+                ? c.pattern === commandName
+                : c.pattern.test(commandName)
+        );
+
+        if (!command) return;
+
+        try {
+            if (command.react) {
+                await socket.sendMessage(from, {
+                    react: { text: command.react, key: msg.key }
                 });
             }
-            info = await xv.xInfo(results[0].url);
-        }
 
-        if (!info?.dlink) {
-            return socket.sendMessage(sender, {
-                text: "❌ Failed to fetch downloadable link for this video."
+            await command.handler({
+                socket,
+                msg,
+                from,
+                sender,
+                args,
+                reply: (txt) =>
+                    socket.sendMessage(from, { text: txt }, { quoted: msg })
+            });
+
+        } catch (e) {
+            console.error("Command error:", e);
+            await socket.sendMessage(from, {
+                text: '❌ Error occurred while running command'
             });
         }
+    });
 
-        const caption = `
-╭───『 🔞 𝐗𝐕𝐈𝐃𝐄𝐎 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑 』───╮
-│ 🎬 *Title:* ${info.title}
-│ ⏱️ *Duration:* ${info.duration}
-│ 👀 *Views:* ${info.views}
-╰──────────────────────────╯
-        `.trim();
+//================= COMMANDS =================
+//alive command
 
-        // ⬇️ Download & Send Video
-        await socket.sendMessage(sender, {
-            video: { url: info.dlink },
-            caption
-        });
+cmd(
+  {
+    pattern: "alive",
+    desc: "Check bot alive status",
+    react: "🤖"
+  },
+  async ({ socket, from, sender }) => {
+    const startTime = socketCreationTime.get(number) || Date.now();
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
 
-    } catch (err) {
-        console.error("XV ERROR:", err);
-        await socket.sendMessage(sender, {
-            text: `❌ Error: ${err.message || "Failed to fetch/download video"}`
-        });
-    }
-    break;
-}
-                    
-// xnxx download
-                    
-case 'xn': {
-    try {
-        const q = args.join(" "); // ⚡ Make sure q is defined
-        if (!q) {
-            return socket.sendMessage(sender, {
-                text: "❌ Please provide a video link or search keyword."
-            });
-        }
-
-        let info;
-
-        // 🔍 Link or search
-        if (q.startsWith("http")) {
-            info = await xnxx.getVideoInfo(q);
-        } else {
-            const results = await xnxx.searchVideos(q);
-            if (!results || results.length === 0) {
-                return socket.sendMessage(sender, {
-                    text: "❌ No results found for your keyword."
-                });
-            }
-            info = await xnxx.getVideoInfo(results[0].url);
-        }
-
-        const caption = `
-╭───『 🎥 XNXX DOWNLOADER 』───╮
-│ 📌 Title: ${info.title}
-│ ⏱ Duration: ${info.duration}
-│ 👀 Views: ${info.views}
-│ 👍 Likes: ${info.likes}
-│ ⭐ Rating: ${info.rating}
-╰──────────────────────────╯
-        `.trim();
-
-        
-        // 🎬 Send video directly
-        await socket.sendMessage(sender, {
-            video: { url: info.dlink },
-            caption }); 
-        
-
-    } catch (err) {
-        console.error("XNXX ERROR:", err);
-        await socket.sendMessage(sender, {
-            text: `❌ Error while fetching/downloading video.\n${err.message || "Unknown error"}`
-        });
-    }
-    break; 
-}
-// ph download 
-
-case "ph": {
-  try {
-    const q = args.join(" ")
-    if (!q) {
-      return socket.sendMessage(sender, {
-        text: "❌ *Keyword එකක් හෝ Pornhub link එකක් දෙන්න*"
-      })
-    }
-
-    const PH_API = "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ph"
-    const PH_KEY = "3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1"
-
-    let videoInfo
-    let formats
-
-    // 🔗 Direct Pornhub link
-    if (q.startsWith("http")) {
-      const res = await axios.get(`${PH_API}/download`, {
-        params: { url: q, apiKey: PH_KEY }
-      })
-
-      if (!res.data?.data?.format) {
-        return socket.sendMessage(sender, { text: "❌ Download failed!" })
-      }
-
-      const data = res.data.data
-      videoInfo = {
-        title: data.video_title,
-        uploader: data.video_uploader,
-        duration: "Unknown",
-        views: "Unknown"
-      }
-      formats = data.format
-
-    } else {
-      // 🔍 Search keyword
-      const search = await axios.get(`${PH_API}/search`, {
-        params: { q, apiKey: PH_KEY }
-      })
-
-      const results = search.data?.data
-      if (!results || results.length === 0) {
-        return socket.sendMessage(sender, { text: "❌ No results found!" })
-      }
-
-      const first = results[0]
-
-      const dl = await axios.get(`${PH_API}/download`, {
-        params: { url: first.url, apiKey: PH_KEY }
-      })
-
-      if (!dl.data?.data?.format) {
-        return socket.sendMessage(sender, { text: "❌ Download failed!" })
-      }
-
-      videoInfo = {
-        title: first.title,
-        uploader: first.uploader,
-        duration: first.duration,
-        views: first.views
-      }
-      formats = dl.data.data.format
-    }
-
-    // 🎯 Best quality select
-    const quality =
-      formats.find(v => v.resolution === "1080") ||
-      formats.find(v => v.resolution === "720") ||
-      formats.find(v => v.resolution === "480") ||
-      formats[0]
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = uptime % 60;
 
     const caption = `
+╭───『 🤖 BOT ACTIVE 』───╮
+│ ⏰ Uptime: ${h}h ${m}m ${s}s
+│ 🟢 Active Sessions: ${activeSockets.size}
+│ 📱 Your Number: ${number}
+╰──────────────────────╯
+    `.trim();
+
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption
+    });
+  }
+);
+
+//menu command 
+
+cmd(
+  {
+    pattern: "menu",
+    desc: "Show bot command menu",
+    react: "📜"
+  },
+  async ({ socket, from }) => {
+    const startTime = socketCreationTime.get(number) || Date.now();
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = uptime % 60;
+
+    const os = require("os");
+    const ramUsed = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    const ramTotal = Math.round(os.totalmem() / 1024 / 1024);
+
+    const prefix = userConfig.PREFIX || ".";
+
+    const menu = `
+👋 *Hi ${number}*
+
+╭───『 🤖 MANISHA-MD MINI 』───╮
+│ 👾 *Bot:* MANISHA-MD
+│ 👑 *Owner:* manaofc
+│ ⏰ *Uptime:* ${h}h ${m}m ${s}s
+│ 🧠 *RAM:* ${ramUsed}MB / ${ramTotal}MB
+│ ✏️ *Prefix:* ${prefix}
+╰────────────────────────╯
+
+⚡ *MAIN COMMANDS*
+• ${prefix}alive
+• ${prefix}menu
+• ${prefix}ping
+• ${prefix}uptime
+• ${prefix}repo
+
+⬇️ *DOWNLOAD COMMANDS*
+• ${prefix}xv
+• ${prefix}xn
+• ${prefix}apk
+• ${prefix}mega
+• ${prefix}gdrive
+• ${prefix}mfire
+
+⚙️ *SETTINGS*
+• ${prefix}settings view
+• ${prefix}settings set <key> <value>
+
+👑 *OWNER*
+• ${prefix}tagall
+• ${prefix}getpp <number>
+• ${prefix}deleteme
+
+> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙʏ ᴍᴀɴᴀᴏꜰᴄ*
+    `.trim();
+
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption: menu
+    });
+  }
+);
+
+
+// ping command
+
+cmd(
+  {
+    pattern: "ping",
+    desc: "Check bot speed",
+    react: "🏓"
+  },
+  async ({ socket, from }) => {
+    const start = Date.now();
+    await socket.sendMessage(from, { text: "🏓 Pong!" });
+    const latency = Date.now() - start;
+
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption: `⚡ Latency: ${latency}ms`
+    });
+  }
+);
+
+//uptime command
+
+cmd(
+  {
+    pattern: "uptime",
+    desc: "Bot uptime",
+    react: "⏰"
+  },
+  async ({ socket, from }) => {
+    const startTime = socketCreationTime.get(number) || Date.now();
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = uptime % 60;
+
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption: `⏰ Uptime: ${h}h ${m}m ${s}s`
+    });
+  }
+);
+
+// repo command 
+
+cmd(
+  {
+    pattern: "repo",
+    desc: "Bot GitHub repository",
+    react: "📦"
+  },
+  async ({ socket, from }) => {
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption:
+`📦 *MANISHA-MD MINI BOT*
+
+🔗 GitHub:
+https://github.com/manaofc/minibot
+
+⭐ Fast • Simple • Multi-session
+
+> © powered by manaofc`
+    });
+  }
+);
+
+// song command
+
+function extractYouTubeId(url) {
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|playlist\?list=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+function convertYouTubeLink(q) {
+    const videoId = extractYouTubeId(q);
+    if (videoId) {
+        return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+    return q;
+}
+
+cmd({
+    pattern: "song",
+    alias: ["play", "mp3"],
+    desc: "Download song from YouTube (audio only)",
+    react: "🎵"
+}, async ({ socket, from, args}) => {
+    try {
+        const q = args.join(" ");
+        if (!q) return reply("❌ *Please provide a song name or YouTube URL!*");
+
+        const videoUrl = convertYouTubeLink(q);
+        const search = await yts(videoUrl);
+
+        if (!search.videos || search.videos.length === 0)
+            return reply("❌ No results found!");
+
+        const data = search.videos[0];
+        const url = data.url;
+
+        // Send alive-style caption with thumbnail
+        const caption = `🎧 *SONG DOWNLOADER* - ${BOT}
+
+🎵 *Title:* ${data.title}
+⏱️ *Duration:* ${data.timestamp}
+📅 *Uploaded:* ${data.ago}
+🎭 *Views:* ${data.views}
+
+⬇️ Downloading audio...`;
+
+        await socket.sendMessage(from, {
+            image: { url: data.thumbnail },
+            caption,
+        });
+
+        // Download audio
+        const result = await ytmp3(url, "mp3");
+        if (!result?.downloadUrl) return reply("⚠️ Failed to download audio!");
+
+        const downloadLink = result.downloadUrl;
+
+        // Send audio file
+        await socket.sendMessage(from, {
+            audio: { url: downloadLink },
+            mimetype: "audio/mpeg",
+            fileName: `${data.title}.mp3`,
+            contextInfo: {
+                externalAdReply: {
+                    title: data.title,
+                    body: data.videoId,
+                    mediaType: 1,
+                    sourceUrl: data.url,
+                    thumbnailUrl: data.thumbnail,
+                    renderLargerThumbnail: true
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+        reply(`❌ Error: ${err.message}`);
+    }
+});
+
+// xn command
+
+cmd(
+{ 
+pattern: "xn", 
+desc: "Download xnxx", 
+react: "🔞" },
+  async ({ socket, from, args }) => {
+    try {
+      const q = args.join(" ");
+      if (!q) return socket.sendMessage(from, { text: "❌ Provide link or keyword" });
+
+      let info;
+      if (q.startsWith("http")) {
+        info = await xnxx.getVideoInfo(q);
+      } else {
+        const res = await xnxx.searchVideos(q);
+        if (!res.length) return socket.sendMessage(from, { text: "❌ No results" });
+        info = await xnxx.getVideoInfo(res[0].url);
+      }
+
+      await socket.sendMessage(from, {
+        video: { url: info.dlink },
+        caption: `🎬 *${info.title}*\n⏱ ${info.duration}\n👀 ${info.views}`
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ XN download failed" });
+    }
+  }
+);
+
+//xv command
+
+cmd(
+{ 
+pattern: "xv", 
+desc: "Download xvideos", 
+react: "🔞" },
+  async ({ socket, from, args }) => {
+    try {
+      const q = args.join(" ");
+      if (!q) return socket.sendMessage(from, { text: "❌ Provide link or keyword" });
+
+      let info;
+      if (q.startsWith("http")) {
+        info = await xv.xInfo(q);
+      } else {
+        const res = await xv.xsearch(q);
+        if (!res.length) return socket.sendMessage(from, { text: "❌ No results" });
+        info = await xv.xInfo(res[0].url);
+      }
+
+      await socket.sendMessage(from, {
+        video: { url: info.dlink },
+        caption: `🎬 *${info.title}*\n⏱ ${info.duration}\n👀 ${info.views}`
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ XV download failed" });
+    }
+  }
+);
+
+// ph command
+cmd(
+  {
+    pattern: "ph",
+    desc: "Download Pornhub video by keyword or link",
+    react: "🔞"
+  },
+  async ({ socket, sender, args }) => {
+    try {
+      const q = args.join(" ");
+      if (!q) {
+        return socket.sendMessage(sender, {
+          text: "❌ *Keyword එකක් හෝ Pornhub link එකක් දෙන්න*"
+        });
+      }
+
+      const PH_API = "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ph";
+      const PH_KEY = "3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1";
+
+      let videoInfo;
+      let formats;
+
+      // 🔗 Direct Pornhub link
+      if (q.startsWith("http")) {
+        const res = await axios.get(`${PH_API}/download`, {
+          params: { url: q, apiKey: PH_KEY }
+        });
+
+        if (!res.data?.data?.format) {
+          return socket.sendMessage(sender, { text: "❌ Download failed!" });
+        }
+
+        const data = res.data.data;
+        videoInfo = {
+          title: data.video_title,
+          uploader: data.video_uploader,
+          duration: "Unknown",
+          views: "Unknown"
+        };
+        formats = data.format;
+
+      } else {
+        // 🔍 Search keyword
+        const search = await axios.get(`${PH_API}/search`, {
+          params: { q, apiKey: PH_KEY }
+        });
+
+        const results = search.data?.data;
+        if (!results || results.length === 0) {
+          return socket.sendMessage(sender, { text: "❌ No results found!" });
+        }
+
+        const first = results[0];
+
+        const dl = await axios.get(`${PH_API}/download`, {
+          params: { url: first.url, apiKey: PH_KEY }
+        });
+
+        if (!dl.data?.data?.format) {
+          return socket.sendMessage(sender, { text: "❌ Download failed!" });
+        }
+
+        videoInfo = {
+          title: first.title,
+          uploader: first.uploader,
+          duration: first.duration,
+          views: first.views
+        };
+        formats = dl.data.data.format;
+      }
+
+      // 🎯 Select best quality
+      const quality =
+        formats.find(v => v.resolution === "1080") ||
+        formats.find(v => v.resolution === "720") ||
+        formats.find(v => v.resolution === "480") ||
+        formats[0];
+
+      const caption = `
 ╭───『 🔞 PH DOWNLOADER 』───╮
 │ 🎬 Title: ${videoInfo.title}
 │ 👤 Uploader: ${videoInfo.uploader}
@@ -574,587 +885,315 @@ case "ph": {
 │ ⏱ Duration: ${videoInfo.duration}
 │ 📀 Quality: ${quality.resolution}p
 ╰──────────────────────────╯
-`.trim()
+`.trim();
 
-    await socket.sendMessage(sender, { text: "⬇️ Downloading video..." })
+      await socket.sendMessage(sender, { text: "⬇️ Downloading video..." });
 
-    await socket.sendMessage(sender, {
-      video: { url: quality.download_url },
-      caption
-    })
+      await socket.sendMessage(sender, {
+        video: { url: quality.download_url },
+        caption
+      });
 
-  } catch (err) {
-    console.error("PH ERROR:", err)
-    await socket.sendMessage(sender, {
-      text: "❌ Error while fetching/downloading video!"
-    })
+    } catch (err) {
+      console.error("PH ERROR:", err);
+      await socket.sendMessage(sender, {
+        text: "❌ Error while fetching/downloading video!"
+      });
+    }
   }
-  break
-}
- 
-  
-// song download 
-case "song": {
-  try {
-    const q = args.join(" "); // Song name or YouTube URL
-    if (!q) {
-      return socket.sendMessage(sender, { text: "❌ Please provide a song name or YouTube URL." });
+);
+
+// apk command 
+
+cmd(
+  { 
+pattern: "apk", 
+desc: "Download APK", 
+react: "📱" },
+  async ({ socket, from, args }) => {
+    try {
+      const q = args.join(" ");
+      if (!q) return socket.sendMessage(from, { text: "❌ App name required" });
+
+      const api = `http://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(q)}/limit=1`;
+      const res = await axios.get(api);
+      const app = res.data.datalist.list[0];
+
+      await socket.sendMessage(from, {
+        document: { url: app.file.path_alt },
+        fileName: `${app.name}.apk`,
+        mimetype: "application/vnd.android.package-archive",
+        caption: `📦 *${app.name}*\n💾 ${(app.size / 1048576).toFixed(2)} MB`
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ APK download failed" });
     }
+  }
+);
 
-    let data;
+//mega command 
 
-    if (q.startsWith("http")) {
-      // Direct YouTube URL
-      data = { url: q };
+cmd(
+{ 
+pattern: "mega", 
+desc: "Mega.nz downloader", 
+react: "☁️" },
+  async ({ socket, from, args }) => {
+    try {
+      const file = File.fromURL(args[0]);
+      await file.loadAttributes();
 
-      // Optional: fetch metadata
-      const videoSearch = await yts(data.url);
-      if (videoSearch.videos && videoSearch.videos.length > 0) {
-        data = videoSearch.videos[0];
+      const buffer = await file.downloadBuffer();
+      await socket.sendMessage(from, {
+        document: buffer,
+        fileName: file.name,
+        mimetype: mime.lookup(file.name)
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ Mega download failed" });
+    }
+  }
+);
+
+// gdrive command 
+
+cmd(
+{
+pattern: "gdrive", 
+desc: "Google Drive downloader", 
+react: "☁️" },
+  async ({ socket, from, args }) => {
+    try {
+      const url = args[0];
+      if (!url) return socket.sendMessage(from, { text: "❌ Drive link required" });
+
+      const file = await GDriveDl(url);
+      await socket.sendMessage(from, {
+        document: { url: file.downloadUrl },
+        fileName: file.fileName,
+        caption: `📄 ${file.fileName}\n📦 ${file.fileSize}`
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ GDrive failed" });
+    }
+  }
+);
+
+// mediafire command
+
+cmd(
+{ 
+pattern: "mfire", 
+desc: "MediaFire downloader", 
+react: "📂" },
+  async ({ socket, from, args }) => {
+    try {
+      const res = await fetch(args[0]);
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      const fileName = $(".filename").text().trim();
+      const link = $("#downloadButton").attr("href");
+
+      await socket.sendMessage(from, {
+        document: { url: link },
+        fileName,
+        caption: `📄 ${fileName}`
+      });
+    } catch (e) {
+      console.error(e);
+      socket.sendMessage(from, { text: "❌ MediaFire failed" });
+    }
+  }
+);
+
+// settings command
+
+cmd(
+  {
+    pattern: "settings",
+    desc: "View or update bot settings",
+    react: "⚙️"
+  },
+  async ({ socket, from, args }) => {
+    const prefix = userConfig.PREFIX || ".";
+
+    if (args[0] === "view") {
+      let text = "*📋 Your Current Settings*\n\n";
+      for (const [k, v] of Object.entries(userConfig)) {
+        text += `• ${k}: ${Array.isArray(v) ? v.join(", ") : v}\n`;
       }
-    } else {
-      // Search query
-      const search = await yts(q);
-      if (!search.videos || search.videos.length === 0) {
-        return socket.sendMessage(sender, { text: "❌ No results found!" });
-      }
-      data = search.videos[0];
+      return socket.sendMessage(from, { text });
     }
 
-    const caption = `
-╭───『 🎧 SONG DOWNLOADER 』───╮
-│ 📌 Title: ${data.title || "Unknown"}
-│ ⏱ Duration: ${data.timestamp || "Unknown"}
-│ 👀 Views: ${data.views || "Unknown"}
-│ 📅 Uploaded: ${data.ago || "Unknown"}
-╰──────────────────────────╯
-Downloading audio... 🎵
-    `.trim();
+    if (args[0] === "set" && args.length >= 3) {
+      const key = args[1].toUpperCase();
+      const value = args.slice(2).join(" ");
 
-    // Notify user
-    await socket.sendMessage(sender, { text: "⬇️ Downloading song..." });
+      userConfig[key] = key === "AUTO_LIKE_EMOJI"
+        ? value.split(",")
+        : value;
 
-    // Download audio
-    const result = await ytmp3(data.url, "mp3");
-    if (!result?.downloadUrl) {
-      return socket.sendMessage(sender, { text: "❌ Failed to download audio!" });
+      await updateUserConfig(number, userConfig);
+
+      return socket.sendMessage(from, {
+        text: `✅ Updated: ${key} = ${value}`
+      });
     }
 
-    // Send audio file
-    await socket.sendMessage(sender, {
-      audio: { url: result.downloadUrl },
-      caption,
-    });
-  } catch (err) {
-    console.error("SONG ERROR:", err);
-    await socket.sendMessage(sender, {
-      text: `❌ Error while fetching/downloading song.\n${err.message || "Unknown error"}`,
+    await socket.sendMessage(from, {
+      text:
+`❌ Invalid usage
+${prefix}settings view
+${prefix}settings set <key> <value>`
     });
   }
-  break;
-}
- 
-//apk download
-                    
-        case 'apk': {
-    try {
-        const q = args.join(" "); // ✅ Make sure q is defined
-        if (!q) {
-            return socket.sendMessage(sender, {
-                text: "❌ *Please provide an app name to search!*"
-            });
-        }
+);
 
-        const apiUrl = `http://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(q)}/limit=1`;
-        const res = await axios.get(apiUrl);
-        const data = res.data;
+//deletme command 
 
-        if (!data?.datalist?.list || data.datalist.list.length === 0) {
-            return socket.sendMessage(sender, {
-                text: "⚠️ *No results found for the given app name.*"
-            });
-        }
+cmd(
+  {
+    pattern: "deleteme",
+    desc: "Delete your bot session",
+    react: "🗑️"
+  },
+  async ({ socket, from }) => {
+    const prefix = userConfig.PREFIX || ".";
 
-        const app = data.datalist.list[0];
-        const appSize = (app.size / 1048576).toFixed(2); // MB
-        const thumb = app.icon;
-        const apkUrl = app.file?.path_alt;
+    await socket.sendMessage(from, {
+      image: { url: defaultConfig.IMAGE_PATH },
+      caption:
+`⚠️ *Delete Session?*
 
-        if (!apkUrl) {
-            return socket.sendMessage(sender, {
-                text: "❌ *Failed to fetch APK download link.*"
-            });
-        }
+This will:
+• Logout bot
+• Delete session data
+• Require re-pairing
 
-        const caption = `
-╭───『 📱 APK DOWNLOADER 』───╮
-│ 📦 *Name:* ${app.name}
-│ 🆔 *Package:* ${app.package}
-│ 💾 *Size:* ${appSize} MB
-│ 👨‍💻 *Developer:* ${app.developer.name}
-│ 🗓️ *Updated:* ${app.updated}
-╰──────────────────────────╯
-        `.trim();
+Reply with *${prefix}confirm* to continue`
+    });
+  }
+);
 
-        // 🖼️ App info
-        await socket.sendMessage(sender, {
-            image: { url: thumb },
-            caption
-        });
+// confirm command
 
-        // ⬇️ Send APK
-        await socket.sendMessage(sender, {
-            document: { url: apkUrl },
-            fileName: `${app.name}.apk`.replace(/[^\w\s.-]/gi, ''),
-            mimetype: "application/vnd.android.package-archive"
-        });
-
-    } catch (err) {
-        console.error("APK ERROR:", err);
-        await socket.sendMessage(sender, {
-            text: `❌ Error: ${err.message || "Failed to download APK"}`
-        });
-    }
-    break;
-}
-                    
-// gdrivre download 
-                    
-                case 'gdrive':{
-                    try {
-                        const q = args.join(" ");
-        if (!q || !q.startsWith("http")) {
-            return socket.sendMessage(sender, {
-                text: "❗ Please provide a valid Google Drive link."
-            });
-        }
-
-        const file = await GDriveDl(q);
-        if (file.error) {
-            return socket.sendMessage(sender, {
-                text: "❌ Failed: " + (file.message || "Unable to fetch file.")
-            });
-        }
-
-        let sizeMB = 0;
-        if (file.fileSize.includes("MB")) {
-            sizeMB = parseFloat(file.fileSize);
-        } else if (file.fileSize.includes("GB")) {
-            sizeMB = parseFloat(file.fileSize) * 1024;
-        }
-
-        if (sizeMB > 1900) {
-            return socket.sendMessage(sender, {
-                text:
-`📄 ${file.fileName}
-📦 Size: ${file.fileSize}
-
-⚠️ File too large for WhatsApp.
-⬇️ Download manually:
-${file.downloadUrl}`
-            });
-        }
+cmd(
+    {
+        pattern: 'confirm',
+        desc: 'Delete your bot session',
+        react: '🗑️'
+    },
+    async ({ socket, sender, number, msg }) => {
+        const sanitizedNumber = number.replace(/[^0-9]/g, '');
 
         await socket.sendMessage(sender, {
-            document: { url: file.downloadUrl },
-            fileName: file.fileName,
-            mimetype: "application/octet-stream",
-            caption: `📄 ${file.fileName}\n📦 Size: ${file.fileSize}`
+            text: '🗑️ Deleting your session...\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
         });
 
-    } catch (err) {
-        console.error("GDRIVE ERROR:", err);
-        socket.sendMessage(sender, {
-            text: "❌ Error while processing Google Drive link."
-        });
-    }
-    break;
-}
-                    
- // mega download 
-                    
- case 'mega': {
-    try {
-        const q = args.join(" ");
-        if (!q) {
-            return socket.sendMessage(sender, {
-                text: "❗ Please provide a MEGA.nz link."
-            });
-        }
-
-        const file = File.fromURL(q);
-        await file.loadAttributes();
-
-        const maxSize = 4 * 1024 * 1024 * 1024; // 4GB
-        if (file.size > maxSize) {
-            return socket.sendMessage(sender, {
-                text:
-`❌ File too large
-Max: 4GB
-Size: ${(file.size / (1024 ** 3)).toFixed(2)} GB`
-            });
-        }
-
-        await socket.sendMessage(sender, {
-            text: `⬇️ Downloading ${file.name} (${(file.size / (1024 ** 2)).toFixed(2)} MB)...`
-        });
-
-        const buffer = await file.downloadBuffer();
-        const mimeType = mime.lookup(file.name) || "application/octet-stream";
-
-        await socket.sendMessage(sender, {
-            document: buffer,
-            fileName: file.name,
-            mimetype: mimeType
-        });
-
-    } catch (err) {
-        console.error("MEGA ERROR:", err);
-        socket.sendMessage(sender, {
-            text: "❌ Failed to download MEGA file."
-        });
-    }
-    break;
-}
-                    
-//mediafire download 
-                    
-case 'mfire': {
-    try {
-        const q = args.join(" ");
-        if (!q || !q.startsWith("https://")) {
-            return socket.sendMessage(sender, {
-                text: "❗ Please provide a valid MediaFire link."
-            });
-        }
-
-        const res = await fetch(q);
-        const html = await res.text();
-        const $ = cheerio.load(html);
-
-        const fileName = $(".dl-info .filename").text().trim();
-        const downloadUrl = $("#downloadButton").attr("href");
-        const fileType = $(".dl-info .filetype").text().trim();
-        const fileSize = $(".dl-info ul li span").first().text().trim();
-        const fileDate = $(".dl-info ul li span").last().text().trim();
-
-        if (!fileName || !downloadUrl) {
-            return socket.sendMessage(sender, {
-                text: "⚠️ Failed to extract MediaFire info."
-            });
-        }
-
-        const ext = fileName.split(".").pop().toLowerCase();
-        const mimeTypes = {
-            zip: "application/zip",
-            pdf: "application/pdf",
-            mp4: "video/mp4",
-            mkv: "video/x-matroska",
-            mp3: "audio/mpeg",
-            "7z": "application/x-7z-compressed",
-            jpg: "image/jpeg",
-            jpeg: "image/jpeg",
-            png: "image/png",
-            rar: "application/x-rar-compressed"
-        };
-
-        await socket.sendMessage(sender, {
-            document: { url: downloadUrl },
-            fileName,
-            mimetype: mimeTypes[ext] || "application/octet-stream",
-            caption:
-`📄 ${fileName}
-📁 Type: ${fileType}
-📦 Size: ${fileSize}
-📅 Uploaded: ${fileDate}`
-        });
-
-    } catch (err) {
-        console.error("MEDIAFIRE ERROR:", err);
-        socket.sendMessage(sender, {
-            text: "❌ Error while processing MediaFire link."
-        });
-    }
-    break;
-}
- 
- // bot setting
-                 case 'settings': {
-                    if (args[0] === 'set' && args.length >= 3) {
-                        const configKey = args[1].toUpperCase();
-                        const configValue = args.slice(2).join(' ');
-                        
-                        // Handle array values
-                        if (configKey === 'AUTO_LIKE_EMOJI') {
-                            userConfig[configKey] = configValue.split(',');
-                        } else {
-                            userConfig[configKey] = configValue;
-                        }
-                        
-                        await updateUserConfig(number, userConfig);
-                        
-                        await socket.sendMessage(sender, {
-                            text: `✅ settings updated: ${configKey} = ${configValue}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                        });
-                    } else if (args[0] === 'view') {
-                        let configText = '*📋 Your Current Config:*\n\n';
-                        for (const [key, value] of Object.entries(userConfig)) {
-                            configText += `• ${key}: ${Array.isArray(value) ? value.join(', ') : value}\n`;
-                        }
-                        configText += '\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*';
-                        
-                        await socket.sendMessage(sender, { text: configText });
-                    } else {
-                        await socket.sendMessage(sender, {
-                            text: `❌ Invalid settings command. Usage:\n${prefix}settings set [key] [value]\n${prefix}settings view\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                        });
-                    }
-                    break;
-                }
-// main menu
-                case 'menu': {
-                    const startTime = socketCreationTime.get(number) || Date.now();
-                    const uptime = Math.floor((Date.now() - startTime) / 1000);
-                    const hours = Math.floor(uptime / 3600);
-                    const minutes = Math.floor((uptime % 3600) / 60);
-                    const seconds = Math.floor(uptime % 60);
-
-                    const os = require('os');
-                    const ramUsage = Math.round(process.memoryUsage().rss / 1024 / 1024);
-                    const totalRam = Math.round(os.totalmem() / 1024 / 1024);
-
-                    const menuCaption = `
-👋 *Hi ${number}*
-
-╭───『 *MANISHA-MD-MINI BOT IS ACTIVETE* 』
-│ 👾 *ʙᴏᴛ*: MANISHA-MD
-│ 📞 *ᴏᴡɴᴇʀ*: ᴍᴀɴᴀᴏꜰᴄ
-│ ⏳ *ᴜᴘᴛɪᴍᴇ*: ${hours}h ${minutes}m ${seconds}s
-│ 📂 *ʀᴀᴍ*: ${ramUsage}MB / ${totalRam}MB
-│ ✏️ *ᴘʀᴇғɪx*: ${prefix}
-╰─────────────────────╯
-
-⚡ Commands list
-
-main commands:
-
-- ${prefix}alive
-- ${prefix}menu
-- ${prefix}ping
-- ${prefix}uptime
-- ${prefix}repo
-
-download commands:
-
-- ${prefix}xv
-- ${prefix}xv
-- ${prefix}mfire
-- ${prefix}mega
-- ${prefix}gdrive
-
-settings commands:
-
-- ${prefix}settings
-
-owner commands:
-
-- ${prefix}tagall
-- ${prefix}deleteme / confirm
-- ${prefix}getpp <number> - Get profile picture of any number
-`;
-
-                    await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption: menuCaption.trim()
-                    });
-                    break;
-                }
-
-// ping
-               case 'ping': {
-                    const start = Date.now();
-                    await socket.sendMessage(sender, { text: '🏓 Pong!' });
-                    const latency = Date.now() - start;
-
-             await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption:  `⚡ *Latency:* ${latency}ms\n📶 *Connection:* ${latency < 500 ? 'Excellent' : latency < 1000 ? 'Good' : 'Poor'}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ* `
-                    });
-                    break;
-                } 
-// uptime
-                
-                case 'uptime': {
-                    const startTime = socketCreationTime.get(number) || Date.now();
-                    const uptime = Math.floor((Date.now() - startTime) / 1000);
-                    const hours = Math.floor(uptime / 3600);
-                    const minutes = Math.floor((uptime % 3600) / 60);
-                    const seconds = Math.floor(uptime % 60);
-                    await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption:  `⏰ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n📊 *Active Sessions:* ${activeSockets.size}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                    });
-                   
-                    break;
-                }
-// tagall
-
-                case 'tagall': {
-                    if (!msg.key.remoteJid.endsWith('@g.us')) {
-                        await socket.sendMessage(sender, { text: '❌ This command can only be used in groups.' });
-                        return;
-                    }
-                    const groupMetadata = await socket.groupMetadata(sender);
-                    const participants = groupMetadata.participants.map(p => p.id);
-                    const tagMessage = `📢 *Tagging all members:*\n\n${participants.map(p => `@${p.split('@')[0]}`).join(' ')}`;
-                    
-                    await socket.sendMessage(sender, {
-                        text: tagMessage,
-                        mentions: participants
-                    });
-                    break;
-                }
-// repo
-                case 'repo': {
-                    await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption: `📦 *MANISHA-MD-MINI BOT REPOSITORY*\n\n🔗 *GitHub:* https://github.com/manaofc/manaofc-minibot\n\n🌟 *Features:*\n• Fast & Reliable\n• Easy to Use\n• Multiple Sessions\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                    });
-                    break;
-                }
-// getpp
-                case 'getpp': {
-                    if (args.length === 0) {
-                        await socket.sendMessage(sender, { 
-                            text: `❌ Please provide a phone number.\nUsage: ${prefix}getpp <number>\nExample: ${prefix}getpp 94759934522\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*` 
-                        });
-                        return;
-                    }
-                    
-                    let targetNumber = args[0].replace(/[^0-9]/g, '');
-                    
-                    // Add country code if not provided
-                    if (!targetNumber.startsWith('92') && targetNumber.length === 10) {
-                        targetNumber = '92' + targetNumber;
-                    }
-                    
-                    // Ensure it has @s.whatsapp.net
-                    const targetJid = targetNumber.includes('@') ? targetNumber : `${targetNumber}@s.whatsapp.net`;
-                    
-                    await socket.sendMessage(sender, { 
-                        text: `🕵️ Stealing profile picture for ${targetNumber}...\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*` 
-                    });
-                    
-                    try {
-                        // Get profile picture URL
-                        const profilePictureUrl = await socket.profilePictureUrl(targetJid, 'image');
-                        
-                        if (profilePictureUrl) {
-                            await socket.sendMessage(sender, {
-                                image: { url: profilePictureUrl },
-                                caption: `✅ Successfully stole profile picture!\n📱 Number: ${targetNumber}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                            });
-                        } else {
-                            await socket.sendMessage(sender, { 
-                                text: `❌ No profile picture found for ${targetNumber}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*` 
-                            });
-                        }
-                        
-                    } catch (error) {
-                        console.error('Profile picture steal error:', error);
-                        
-                        if (error.message.includes('404') || error.message.includes('not found')) {
-                            await socket.sendMessage(sender, { 
-                                text: `❌ No profile picture found for ${targetNumber}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*` 
-                            });
-                        } else {
-                            await socket.sendMessage(sender, { 
-                                text: `❌ Error stealing profile picture: ${error.message}\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*` 
-                            });
-                        }
-                    }
-                    break;
-                }
-// deletme
-                case 'deleteme': {
-                    const confirmationMessage = `⚠️ *Are you sure you want to delete your session?*\n\nThis action will:\n• Log out your bot\n• Delete all session data\n• Require re-pairing to use again\n\nReply with *${prefix}confirm* to proceed or ignore to cancel.`;
-                    
-                    await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption: confirmationMessage + '\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
-                    });
-                    break;
-                }
-// confirm
-                case 'confirm': {
-                    // Handle session deletion confirmation
-                    const sanitizedNumber = number.replace(/[^0-9]/g, '');
-                    
-                    await socket.sendMessage(sender, {
-                        text: '🗑️ Deleting your session...\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
-                    });
-                    
-                    try {
-                        // Close the socket connection
-                        const socket = activeSockets.get(sanitizedNumber);
-                        if (socket) {
-                            socket.ws.close();
-                            activeSockets.delete(sanitizedNumber);
-                            socketCreationTime.delete(sanitizedNumber);
-                        }
-                        
-                        // Delete session files
-                        const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
-                        if (fs.existsSync(sessionPath)) {
-                            fs.removeSync(sessionPath);
-                        }
-                        
-                        // Delete from GitHub if octokit is available
-                        if (octokit) {
-                            await deleteSessionFromGitHub(sanitizedNumber);
-                        }
-                        
-                        // Remove from numbers list
-                        let numbers = [];
-                        if (fs.existsSync(NUMBER_LIST_PATH)) {
-                            numbers = JSON.parse(fs.readFileSync(NUMBER_LIST_PATH, 'utf8'));
-                        }
-                        const index = numbers.indexOf(sanitizedNumber);
-                        if (index !== -1) {
-                            numbers.splice(index, 1);
-                            fs.writeFileSync(NUMBER_LIST_PATH, JSON.stringify(numbers, null, 2));
-                        }
-                        
-                        await socket.sendMessage(sender, {
-                            text: '✅ Your session has been successfully deleted!\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
-                        });
-                    } catch (error) {
-                        console.error('Failed to delete session:', error);
-                        await socket.sendMessage(sender, {
-                            text: '❌ Failed to delete your session. Please try again later.\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
-                        });
-                    }
-                    break;
-                }
-                
-                
-
-                default: {
-                    await socket.sendMessage(sender, {
-                        text: `❌ Unknown command: ${command}\nUse ${prefix}menu to see available commands.\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
-                    });
-                    break;
-                }
+        try {
+            // Close the socket connection
+            const userSocket = activeSockets.get(sanitizedNumber);
+            if (userSocket) {
+                userSocket.ws.close();
+                activeSockets.delete(sanitizedNumber);
+                socketCreationTime.delete(sanitizedNumber);
             }
-        } catch (error) {
-            console.error('Command handler error:', error);
+
+            // Delete session files
+            const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
+            if (fs.existsSync(sessionPath)) {
+                fs.removeSync(sessionPath);
+            }
+
+            // Delete from GitHub if octokit is available
+            if (octokit) {
+                await deleteSessionFromGitHub(sanitizedNumber);
+            }
+
+            // Remove from numbers list
+            let numbers = [];
+            if (fs.existsSync(NUMBER_LIST_PATH)) {
+                numbers = JSON.parse(fs.readFileSync(NUMBER_LIST_PATH, 'utf8'));
+            }
+            const index = numbers.indexOf(sanitizedNumber);
+            if (index !== -1) {
+                numbers.splice(index, 1);
+                fs.writeFileSync(NUMBER_LIST_PATH, JSON.stringify(numbers, null, 2));
+            }
+
             await socket.sendMessage(sender, {
-                text: `❌ An error occurred while processing your command. Please try again.\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
+                text: '✅ Your session has been successfully deleted!\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
+            });
+        } catch (error) {
+            console.error('Failed to delete session:', error);
+            await socket.sendMessage(sender, {
+                text: '❌ Failed to delete your session. Please try again later.\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*'
             });
         }
-    });
-}
+    }
+);
 
+// getpp command 
+
+cmd(
+  {
+    pattern: "getpp",
+    desc: "Get profile picture of a number",
+    react: "🕵️"
+  },
+  async ({ socket, from, args }) => {
+    if (!args[0])
+      return socket.sendMessage(from, {
+        text: "❌ Usage: getpp <number>"
+      });
+
+    let num = args[0].replace(/\D/g, "");
+    if (num.length === 10) num = "92" + num;
+
+    const jid = `${num}@s.whatsapp.net`;
+
+    try {
+      const pp = await socket.profilePictureUrl(jid, "image");
+      await socket.sendMessage(from, {
+        image: { url: pp },
+        caption: `📱 Profile picture of ${num}`
+      });
+    } catch {
+      socket.sendMessage(from, {
+        text: "❌ No profile picture found"
+      });
+    }
+  }
+);
+
+// tagall command 
+
+cmd(
+  {
+    pattern: "tagall",
+    desc: "Tag all group members",
+    react: "📢"
+  },
+  async ({ socket, msg, from }) => {
+    if (!from.endsWith("@g.us"))
+      return socket.sendMessage(from, { text: "❌ Group only command" });
+
+    const meta = await socket.groupMetadata(from);
+    const members = meta.participants.map(p => p.id);
+
+    await socket.sendMessage(from, {
+      text: `📢 *Tagging everyone*\n\n${members.map(u => `@${u.split("@")[0]}`).join(" ")}`,
+      mentions: members
+    });
+  }
+);
+
+
+   
 // Memory optimization: Throttle message handlers
 function setupMessageHandlers(socket, userConfig) {
     let lastPresenceUpdate = 0;
