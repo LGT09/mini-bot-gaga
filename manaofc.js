@@ -541,8 +541,6 @@ cmd(
     const ramUsed = Math.round(process.memoryUsage().rss / 1024 / 1024);
     const ramTotal = Math.round(os.totalmem() / 1024 / 1024);
 
-    const prefix = userConfig.PREFIX || ".";
-
     const menu = `
 👋 *Hi ${number}*
 
