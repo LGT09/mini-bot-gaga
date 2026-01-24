@@ -526,6 +526,117 @@ function setupCommandHandlers(socket, number, userConfig) {
     }
     break;
 }
+
+// ph download 
+case 'ph': {
+    try {
+        const q = args.join(" ").trim();
+
+        if (!q) {
+            return socket.sendMessage(sender, {
+                text: "❌ *Keyword එකක් හෝ Pornhub link එකක් දෙන්න!*\n\nExample:\n.ph mia khalifa"
+            });
+        }
+
+        const PH_API = "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ph";
+        const PH_KEY = "3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1";
+
+        let videoInfo;
+        let formats;
+
+        // 🔗 Direct Pornhub link
+        if (q.startsWith("http")) {
+            const res = await axios.get(`${PH_API}/download`, {
+                params: { url: q, apiKey: PH_KEY }
+            });
+
+            if (!res.data?.data?.format?.length) {
+                return socket.sendMessage(sender, {
+                    text: "❌ *Download failed! Invalid link or API issue.*"
+                });
+            }
+
+            const data = res.data.data;
+
+            videoInfo = {
+                title: data.video_title || "Unknown",
+                uploader: data.video_uploader || "Unknown",
+                duration: data.video_duration || "Unknown",
+                views: data.video_views || "Unknown"
+            };
+
+            formats = data.format;
+
+        } else {
+            // 🔍 Search keyword
+            const search = await axios.get(`${PH_API}/search`, {
+                params: { q, apiKey: PH_KEY }
+            });
+
+            const results = search.data?.data;
+            if (!results || results.length === 0) {
+                return socket.sendMessage(sender, {
+                    text: "❌ *No results found!*"
+                });
+            }
+
+            const first = results[0];
+
+            const dl = await axios.get(`${PH_API}/download`, {
+                params: { url: first.url, apiKey: PH_KEY }
+            });
+
+            if (!dl.data?.data?.format?.length) {
+                return socket.sendMessage(sender, {
+                    text: "❌ *Failed to fetch download link!*"
+                });
+            }
+
+            videoInfo = {
+                title: first.title || "Unknown",
+                uploader: first.uploader || "Unknown",
+                duration: first.duration || "Unknown",
+                views: first.views || "Unknown"
+            };
+
+            formats = dl.data.data.format;
+        }
+
+        // 🎯 Select best quality
+        const quality =
+            formats.find(v => v.resolution === "1080") ||
+            formats.find(v => v.resolution === "720") ||
+            formats.find(v => v.resolution === "480") ||
+            formats[0];
+
+        const caption = `
+╭───『 🔞 PH DOWNLOADER 』───╮
+│ 🎬 *Title:* ${videoInfo.title}
+│ 👤 *Uploader:* ${videoInfo.uploader}
+│ 👀 *Views:* ${videoInfo.views}
+│ ⏱ *Duration:* ${videoInfo.duration}
+│ 📀 *Quality:* ${quality.resolution}p
+╰──────────────────────────╯
+        `.trim();
+
+        await socket.sendMessage(sender, {
+            text: "⬇️ *Downloading video...*"
+        });
+
+        await socket.sendMessage(sender, {
+            video: { url: quality.download_url },
+            caption
+        });
+
+    } catch (err) {
+        console.error("PH CASE ERROR:", err);
+        await socket.sendMessage(sender, {
+            text: "❌ *Error while downloading video!*"
+        });
+    }
+    break;
+}
+
                     
 // xnxx download
                     
