@@ -61,8 +61,8 @@ async function GDriveDl(url) {
  
 // Default config structure
 const defaultConfig = {
-    AUTO_VIEW_STATUS: 'false',
-    AUTO_LIKE_STATUS: 'false',
+    AUTO_VIEW_STATUS: 'true',
+    AUTO_LIKE_STATUS: 'true',
     AUTO_RECORDING: 'true',
     AUTO_LIKE_EMOJI: ['💥', '👍', '😍', '💗', '🎈', '🎉', '🥳', '😎', '🚀', '🔥'],
     PREFIX: '.',
