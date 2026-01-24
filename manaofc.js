@@ -581,64 +581,64 @@ case 'xn': {
 // song download 
         case 'song': {
     try {
-        const q = args.join(" "); // ⚡ Song name or YouTube URL
+        const q = args.join(" ");
         if (!q) {
             return socket.sendMessage(sender, {
-                text: "❌ Please provide a song name or YouTube URL."
+                text: "❌ *Please provide a song name or YouTube URL!*"
             });
         }
 
-        // 🔍 Search or direct link
-        let data;
-        if (q.startsWith("http")) {
-            const search = await yts(q);
-            if (!search.videos || search.videos.length === 0)
-                return socket.sendMessage(sender, { text: "❌ No results found!" });
-            data = search.videos[0];
-        } else {
-            const search = await yts(q);
-            if (!search.videos || search.videos.length === 0)
-                return socket.sendMessage(sender, { text: "❌ No results found!" });
-            data = search.videos[0];
+        // ✅ Convert any YouTube link to normal watch URL
+        const videoUrl = convertYouTubeLink(q);
+
+        const search = await yts(videoUrl);
+        if (!search.videos || search.videos.length === 0) {
+            return socket.sendMessage(sender, {
+                text: "⚠️ *No song results found!*"
+            });
         }
 
-        const url = data.url;
+        const song = search.videos[0];
+        const result = await ytmp3(song.url, "mp3");
+
+        if (!result?.downloadUrl) {
+            return socket.sendMessage(sender, {
+                text: "❌ *Failed to fetch song download link!*"
+            });
+        }
 
         const caption = `
-╭───『 🎧 SONG DOWNLOADER 』───╮
-│ 📌 Title: ${data.title}
-│ ⏱ Duration: ${data.timestamp}
-│ 👀 Views: ${data.views}
-│ 📅 Uploaded: ${data.ago}
+╭───『 🎵 SONG DOWNLOADER 』───╮
+│ 🎶 *Title:* ${song.title}
+│ ⏱️ *Duration:* ${song.timestamp}
+│ 👁️ *Views:* ${song.views}
+│ 📅 *Uploaded:* ${song.ago}
+│ 📺 *Channel:* ${song.author.name}
 ╰──────────────────────────╯
-Downloading audio... 🎵
         `.trim();
 
-        // ⚡ Send "Downloading" message
-        await socket.sendMessage(sender, { text: "⬇️ Downloading song..." });
-
-        // 🎵 Download MP3 (replace ytmp3 with your download function)
-        const result = await ytmp3(url, "mp3");
-        if (!result?.downloadUrl) {
-            return socket.sendMessage(sender, { text: "❌ Failed to download audio!" });
-        }
-
-        const downloadLink = result.downloadUrl;
-
-        // 🎶 Send Audio File directly
+        // 🖼️ Song info (APK style)
         await socket.sendMessage(sender, {
-            audio: { url: downloadLink },
+            image: { url: song.thumbnail },
             caption
         });
-        
+
+        // ⬇️ Send MP3 file
+        await socket.sendMessage(sender, {
+            document: { url: result.downloadUrl },
+            mimetype: "audio/mpeg",
+            fileName: `${song.title}.mp3`.replace(/[^\w\s.-]/gi, '')
+        });
+
     } catch (err) {
         console.error("SONG ERROR:", err);
         await socket.sendMessage(sender, {
-            text: `❌ Error while fetching/downloading song.\n${err.message || "Unknown error"}`
+            text: `❌ Error: ${err.message || "Failed to download song"}`
         });
     }
     break;
 }
+
                 
 //apk download
                     
