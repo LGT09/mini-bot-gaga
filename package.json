@@ -1,5 +1,5 @@
 {
-  "name": "manaofc-minibot",
+  "name": "minibot",
   "version": "2.0.0.6-ms.27",
   "description": " WhatsApp Bot with Multi-Number Support",
   "main": "index.js",
@@ -37,8 +37,8 @@
     "bot",
     "multi-device",
     "baileys",
-    "manaofc-minibot"
+    "minibot"
   ],
-  "author": "manaofc-minibot",
+  "author": "minibot",
   "license": "MIT"
 }
