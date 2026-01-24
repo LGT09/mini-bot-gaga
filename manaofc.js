@@ -867,6 +867,7 @@ main commands:
 
 download commands:
 
+- ${prefix}song
 - ${prefix}xv
 - ${prefix}xn
 - ${prefix}mfire
