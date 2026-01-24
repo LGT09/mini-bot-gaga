@@ -889,7 +889,6 @@ main commands:
 - ${prefix}menu
 - ${prefix}ping
 - ${prefix}uptime
-- ${prefix}repo
 
 download commands:
 
@@ -963,14 +962,6 @@ owner commands:
                     await socket.sendMessage(sender, {
                         text: tagMessage,
                         mentions: participants
-                    });
-                    break;
-                }
-// repo
-                case 'repo': {
-                    await socket.sendMessage(sender, {
-                        image: { url: defaultConfig.IMAGE_PATH },
-                        caption: `📦 *MANISHA-MD-MINI BOT REPOSITORY*\n\n🔗 *GitHub:* https://github.com/manaofc/manaofc-minibot\n\n🌟 *Features:*\n• Fast & Reliable\n• Easy to Use\n• Multiple Sessions\n\n> © *ᴛʜɪꜱ ʙᴏᴛ ᴩᴏᴡᴇʀᴇᴅ ʙy ᴍᴀɴᴀᴏꜰᴄ*`
                     });
                     break;
                 }
