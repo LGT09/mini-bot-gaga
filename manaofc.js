@@ -944,6 +944,7 @@ main commands:
 download commands:
 
 - ${prefix}song
+- ${prefix}video
 - ${prefix}xv
 - ${prefix}xn
 - ${prefix}mfire
