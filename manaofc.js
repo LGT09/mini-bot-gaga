@@ -575,6 +575,53 @@ case 'song': {
     break;
 }
 
+// video download command 
+
+case 'video': {
+  try {
+    const q = args.join(" ");
+    if (!q) return socket.sendMessage(sender, { text: "❌ Please provide a video name or YouTube URL!" });
+
+    const search = await yts(q);
+    if (!search.videos?.length) return socket.sendMessage(sender, { text: "⚠️ No video results found!" });
+
+    const video = search.videos[0];
+    const apiUrl = `https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/ytapi?url=${encodeURIComponent(video.url)}&fo=1&qu=480&apiKey=3ced07381a26a13fda1f1355cd903112648adfe7e55ebb8b840884a185d9a3d1`;
+
+    const res = await axios.get(apiUrl, { timeout: 30000 });
+    const data = res.data;
+
+    // ⚠️ adapt this depending on real fields returned
+    if (!data.downloadUrl) {
+      return socket.sendMessage(sender, { text: "❌ Failed to fetch video download link!" });
+    }
+
+    const downloadUrl = data.downloadUrl;
+
+    await socket.sendMessage(sender, {
+      image: { url: video.thumbnail },
+      caption: `
+📹 *Title:* ${video.title}
+⏱ *Duration:* ${video.timestamp}
+👁 *Views:* ${video.views}
+📺 *Channel:* ${video.author.name}
+📥 *Quality:* 480p
+      `.trim()
+    });
+
+    await socket.sendMessage(sender, {
+      video: { url: downloadUrl },
+      mimetype: "video/mp4",
+      fileName: `${video.title}.mp4`.replace(/[^\w\s.-]/gi, '')
+    });
+
+  } catch (err) {
+    console.error(err);
+    await socket.sendMessage(sender, { text: `❌ Error: ${err.message}` });
+  }
+  break;
+}
+
 //apk download
                     
         case 'apk': {
