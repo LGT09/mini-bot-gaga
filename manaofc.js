@@ -647,7 +647,76 @@ case 'video': {
   break;
 }
 
+// viwe one photo/video 
 
+case 'vv': {
+    try {
+        const quoted =
+            msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        if (!quoted) {
+            return reply("Please reply to a ViewOnce image, video, or audio.");
+        }
+
+        // Handle viewOnce wrapper
+        const viewOnce =
+            quoted.viewOnceMessageV2?.message ||
+            quoted.viewOnceMessage?.message;
+
+        if (!viewOnce) {
+            return reply("This is not a ViewOnce message.");
+        }
+
+        let mediaMessage;
+        let mediaType;
+
+        if (viewOnce.imageMessage) {
+            mediaMessage = viewOnce.imageMessage;
+            mediaType = "image";
+        } else if (viewOnce.videoMessage) {
+            mediaMessage = viewOnce.videoMessage;
+            mediaType = "video";
+        } else if (viewOnce.audioMessage) {
+            mediaMessage = viewOnce.audioMessage;
+            mediaType = "audio";
+        } else {
+            return reply("Unsupported ViewOnce media type.");
+        }
+
+        const stream = await downloadContentFromMessage(
+            mediaMessage,
+            mediaType
+        );
+
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
+
+        if (mediaType === "image") {
+            await socket.sendMessage(sender, {
+                image: buffer,
+                caption: "✅ ViewOnce image recovered"
+            });
+        } else if (mediaType === "video") {
+            await socket.sendMessage(sender, {
+                video: buffer,
+                caption: "✅ ViewOnce video recovered"
+            });
+        } else if (mediaType === "audio") {
+            await socket.sendMessage(sender, {
+                audio: buffer,
+                mimetype: mediaMessage.mimetype || "audio/mpeg"
+            });
+        }
+
+    } catch (e) {
+        console.error("VV Error:", e);
+        reply("An error occurred while fetching the ViewOnce message.");
+    }
+    break;
+}
+ 
 //apk download
                     
         case 'apk': {
