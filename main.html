@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MINI BOT</title>
+<title>MINI BOT - Pair & Info</title>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css"/>
@@ -11,16 +11,59 @@
 <style>
 body{
   margin:0;
-  height:100vh;
+  min-height:100vh;
   display:flex;
   justify-content:center;
-  align-items:center;
-  background:#050505;
+  align-items:flex-start;
+  padding-top:30px;
+  background: linear-gradient(-45deg, #4a90e2, #3ac569, #9b59b6, #e74c3c);
+  background-size: 400% 400%;
+  animation: gradient 10s ease infinite;
   font-family:Segoe UI, sans-serif;
   color:#fff;
+  flex-direction: column;
+  align-items: center;
 }
 
-.box{
+@keyframes gradient {
+  0% {background-position:0% 50%;}
+  50% {background-position:100% 50%;}
+  100% {background-position:0% 50%;}
+}
+
+.container{
+  text-align:center;
+  margin-bottom:20px;
+  padding:20px;
+  border-radius:15px;
+  backdrop-filter:blur(10px);
+  background: rgba(0,0,0,0.3);
+}
+
+h2{
+  margin-bottom:10px;
+  font-size:2em;
+  text-shadow:0 0 10px #fff,0 0 20px #f0f,0 0 30px #0ff;
+}
+
+.info-box{
+  margin:10px 0;
+  padding:15px;
+  border-radius:10px;
+  background: rgba(255,255,255,0.1);
+  animation: rgbText 5s linear infinite;
+}
+
+@keyframes rgbText {
+  0% {text-shadow: 0 0 5px #ff0000;}
+  25% {text-shadow: 0 0 5px #00ff00;}
+  50% {text-shadow: 0 0 5px #0000ff;}
+  75% {text-shadow: 0 0 5px #ff00ff;}
+  100% {text-shadow: 0 0 5px #ff0000;}
+}
+
+/* Pair Code Box */
+.pair-box{
   width:350px;
   padding:25px;
   border-radius:18px;
@@ -29,6 +72,7 @@ body{
   text-align:center;
   box-shadow:0 0 20px #00ffff,0 0 60px #ff00ff;
   animation:neon 3s infinite alternate;
+  margin-bottom:20px;
 }
 
 @keyframes neon{
@@ -43,6 +87,7 @@ input{
   border-radius:12px;
   font-size:16px;
   outline:none;
+  margin-top:10px;
 }
 
 button{
@@ -69,6 +114,27 @@ button:hover{
   font-weight:bold;
 }
 
+/* WhatsApp Help Button */
+.help-button{
+  width:100%;
+  padding:14px;
+  margin-top:15px;
+  border:none;
+  border-radius:12px;
+  font-weight:bold;
+  letter-spacing:2px;
+  cursor:pointer;
+  background:linear-gradient(45deg,#25D366,#128C7E);
+  color:#000;
+  transition:.3s;
+  text-decoration:none;
+  display:inline-block;
+}
+.help-button:hover{
+  background:linear-gradient(45deg,#1ebe5d,#0f7850);
+  transform:scale(1.05);
+}
+
 /* intl-tel-input dark theme */
 .iti__country-list{
   background:#111;
@@ -87,14 +153,32 @@ button:hover{
 
 <body>
 
-<div class="box">
+<div class="container">
+  <h2>MANISHA-MD-MINI-BOT</h2>
+
+  <div class="info-box">
+    <strong>Device Info:</strong>
+    <p id="deviceInfo">Loading...</p>
+  </div>
+
+  <div class="info-box">
+    <strong>Battery Health:</strong>
+    <p id="batteryHealth">Loading...</p>
+  </div>
+
+  <!-- WhatsApp Help Button -->
+  <a href="https://wa.me/94759934522" class="help-button" target="_blank">
+    HELP
+  </a>
+</div>
+
+<!-- Pair Code System -->
+<div class="pair-box">
   <i class="fa-solid fa-robot fa-2x"></i>
   <h3>∞ Link with phone number ∞</h3>
   <h6>Country Search Enabled</h6>
 
-  <!-- Phone Input -->
   <input id="phone" type="tel">
-
   <button id="submit">ENTER</button>
 
   <div id="pair"></div>
@@ -104,6 +188,28 @@ button:hover{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js"></script>
 
 <script>
+// --- Device Info ---
+const deviceInfoEl = document.getElementById('deviceInfo');
+deviceInfoEl.textContent = `Platform: ${navigator.platform}, Browser: ${navigator.userAgent}`;
+
+// --- Battery Health ---
+const batteryEl = document.getElementById('batteryHealth');
+if (navigator.getBattery) {
+  navigator.getBattery().then(battery => {
+    function updateBattery() {
+      const level = Math.round(battery.level * 100) + "%";
+      const charging = battery.charging ? "Charging" : "Not Charging";
+      batteryEl.textContent = `${level} (${charging})`;
+    }
+    updateBattery();
+    battery.addEventListener('levelchange', updateBattery);
+    battery.addEventListener('chargingchange', updateBattery);
+  });
+} else {
+  batteryEl.textContent = "Battery API not supported.";
+}
+
+// --- Pair Code System ---
 const phoneInput = intlTelInput(document.querySelector("#phone"), {
   allowDropdown: true,
   separateDialCode: true,
@@ -150,3 +256,4 @@ function copyCode(){
 
 </body>
 </html>
+ 
