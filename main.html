@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MINI BOT – OTP</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MINI BOT</title>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css"/>
@@ -21,11 +21,11 @@ body{
 }
 
 .box{
-  width:360px;
+  width:350px;
   padding:25px;
   border-radius:18px;
-  background:rgba(0,0,0,0.75);
-  backdrop-filter:blur(14px);
+  background:rgba(0,0,0,0.8);
+  backdrop-filter:blur(15px);
   text-align:center;
   box-shadow:0 0 20px #00ffff,0 0 60px #ff00ff;
   animation:neon 3s infinite alternate;
@@ -33,11 +33,8 @@ body{
 
 @keyframes neon{
   from{box-shadow:0 0 15px #00ffff;}
-  to{box-shadow:0 0 40px #ff00ff;}
+  to{box-shadow:0 0 45px #ff00ff;}
 }
-
-h3{margin:10px 0;}
-h6{opacity:.7;margin-top:0;}
 
 input{
   width:100%;
@@ -67,29 +64,12 @@ button:hover{
   transform:scale(1.05);
 }
 
-#otp{
-  display:flex;
-  justify-content:space-between;
-  margin-top:15px;
-}
-
-#otp input{
-  width:45px;
-  height:50px;
-  text-align:center;
-  font-size:22px;
-  background:#111;
-  color:#00ffff;
-  border:2px solid #00ffff;
-  border-radius:10px;
-}
-
-#status{
+#pair{
   margin-top:15px;
   font-weight:bold;
 }
 
-/* intl-tel-input dark fix */
+/* intl-tel-input dark theme */
 .iti__country-list{
   background:#111;
   color:#fff;
@@ -104,40 +84,28 @@ button:hover{
 }
 </style>
 </head>
+
 <body>
 
 <div class="box">
   <i class="fa-solid fa-robot fa-2x"></i>
-  <h3>∞ Secure OTP Link ∞</h3>
-  <h6>Country Search • Neon Theme</h6>
+  <h3>∞ Link with phone number ∞</h3>
+  <h6>Country Search Enabled</h6>
 
-  <!-- Phone with Country Search -->
+  <!-- Phone Input -->
   <input id="phone" type="tel">
 
-  <button onclick="sendOTP()">SEND OTP</button>
+  <button id="submit">ENTER</button>
 
-  <!-- OTP -->
-  <div id="otp" style="display:none;">
-    <input maxlength="1">
-    <input maxlength="1">
-    <input maxlength="1">
-    <input maxlength="1">
-    <input maxlength="1">
-    <input maxlength="1">
-  </div>
-
-  <button id="verifyBtn" style="display:none;" onclick="verifyOTP()">VERIFY</button>
-
-  <div id="status"></div>
+  <div id="pair"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js"></script>
 
 <script>
-/* Country Select + SEARCH ENABLED */
 const phoneInput = intlTelInput(document.querySelector("#phone"), {
   allowDropdown: true,
-  autoPlaceholder: "aggressive",
   separateDialCode: true,
   nationalMode: false,
   initialCountry: "auto",
@@ -146,50 +114,37 @@ const phoneInput = intlTelInput(document.querySelector("#phone"), {
     "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js"
 });
 
-let generatedOTP = "";
+const submit = document.getElementById("submit");
+const pair = document.getElementById("pair");
 
-/* Send OTP (Demo) */
-function sendOTP(){
-  const number = phoneInput.getNumber();
-  const status = document.getElementById("status");
-
-  if(!phoneInput.isValidNumber()){
-    status.innerHTML="❗ Invalid phone number";
-    status.style.color="yellow";
+submit.addEventListener("click", async () => {
+  if (!phoneInput.isValidNumber()) {
+    pair.innerHTML = "<span style='color:yellow'>❗ Invalid phone number</span>";
     return;
   }
 
-  generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-  console.log("OTP (Demo):", generatedOTP);
+  const number = phoneInput.getNumber().replace("+","");
 
-  document.getElementById("otp").style.display="flex";
-  document.getElementById("verifyBtn").style.display="block";
+  pair.innerHTML = "<span style='color:#00ffff'>Please wait...</span>";
 
-  status.innerHTML="✅ OTP Sent (Demo Mode)";
-  status.style.color="#00ffea";
-}
+  try{
+    let { data } = await axios(`/code?number=${number}`);
+    let code = data.code || "Service Unavailable";
 
-/* OTP auto move */
-document.querySelectorAll("#otp input").forEach((input,i,arr)=>{
-  input.addEventListener("input",()=>{
-    if(input.value && arr[i+1]) arr[i+1].focus();
-  });
+    pair.innerHTML = `
+      <div id="copy" onclick="copyCode()" style="cursor:pointer;color:#00ff00">
+        CODE: <b>${code}</b><br><small>(click to copy)</small>
+      </div>
+    `;
+  }catch{
+    pair.innerHTML = "<span style='color:red'>Server error</span>";
+  }
 });
 
-/* Verify OTP */
-function verifyOTP(){
-  let entered="";
-  document.querySelectorAll("#otp input").forEach(i=>entered+=i.value);
-
-  const status=document.getElementById("status");
-
-  if(entered===generatedOTP){
-    status.innerHTML="🎉 OTP VERIFIED";
-    status.style.color="#00ff00";
-  }else{
-    status.innerHTML="❌ INVALID OTP";
-    status.style.color="red";
-  }
+function copyCode(){
+  const el = document.getElementById("copy");
+  navigator.clipboard.writeText(el.innerText.replace("CODE:",""));
+  el.innerHTML = "COPIED ✅";
 }
 </script>
 
