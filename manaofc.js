@@ -649,8 +649,6 @@ case 'video': {
 
 //cinesubz download 
 
-const axios = require("axios");
-
 case 'cinesubz': {
     try {
         const query = args.join(" ");
