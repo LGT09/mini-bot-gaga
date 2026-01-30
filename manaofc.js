@@ -645,6 +645,106 @@ case 'video': {
     break;
 }
 
+//MOVIE DOWNLOAD COMMAND 
+
+//cinesubz download 
+
+const axios = require("axios");
+
+case 'cinesubz': {
+    try {
+        const query = args.join(" ");
+        if (!query) {
+            return socket.sendMessage(sender, {
+                text: "❌ *Please provide a movie name!*"
+            });
+        }
+
+        // ================================
+        // 1️⃣ SEARCH MOVIE
+        // ================================
+        const searchApi = `https://api-dark-shan-yt.koyeb.app/movie/cinesubz-search?q=${encodeURIComponent(query)}&apikey=1c5502363449511f`;
+        const searchRes = await axios.get(searchApi);
+        const searchData = searchRes.data;
+
+        if (!searchData.status || !searchData.data || searchData.data.length === 0) {
+            return socket.sendMessage(sender, {
+                text: "⚠️ *No movies found!*"
+            });
+        }
+
+        // Take first result
+        const movie = searchData.data[0];
+
+        // ================================
+        // 2️⃣ GET MOVIE INFO
+        // ================================
+        const infoApi = `https://api-dark-shan-yt.koyeb.app/movie/cinesubz-info?url=${encodeURIComponent(movie.link)}&apikey=1c5502363449511f`;
+        const infoRes = await axios.get(infoApi);
+        const infoData = infoRes.data;
+
+        if (!infoData.status || !infoData.data || !infoData.data.downloads?.length) {
+            return socket.sendMessage(sender, {
+                text: "❌ *Failed to fetch movie info!*"
+            });
+        }
+
+        const info = infoData.data;
+        const firstDownload = info.downloads[0];
+
+        // ================================
+        // 3️⃣ GET FINAL DOWNLOAD LINK
+        // ================================
+        const downloadApi = `https://api-dark-shan-yt.koyeb.app/movie/cinesubz-download?url=${encodeURIComponent(firstDownload.link)}&apikey=1c5502363449511f`;
+        const downRes = await axios.get(downloadApi);
+        const downData = downRes.data;
+
+        if (!downData.status || !downData.data?.download?.length) {
+            return socket.sendMessage(sender, {
+                text: "❌ *Download link not available!*"
+            });
+        }
+
+        const file = downData.data;
+        const downloadUrl = file.download[0].url;
+
+        // ================================
+        // 4️⃣ SEND MOVIE DETAILS
+        // ================================
+        const caption = `
+╭───『 🎬 CINESUBZ MOVIE 』───╮
+│ 🎞️ Title: ${info.title}
+│ 📅 Year: ${info.year}
+│ ⏱️ Duration: ${info.duration}
+│ ⭐ Rating: ${info.rating}
+│ 🎥 Quality: ${info.quality}
+│ 🌍 Country: ${info.country}
+╰──────────────────────────╯
+        `.trim();
+
+        await socket.sendMessage(sender, {
+            image: { url: info.image },
+            caption
+        });
+
+        // ================================
+        // 5️⃣ SEND MOVIE FILE
+        // ================================
+        await socket.sendMessage(sender, {
+            document: { url: downloadUrl },
+            mimetype: "video/mp4",
+            fileName: file.title.replace(/[^\w\s.-]/gi, '')
+        });
+
+    } catch (error) {
+        console.error("CINESUBZ ERROR:", error);
+        await socket.sendMessage(sender, {
+            text: `❌ Error: ${error.message || "Movie download failed"}`
+        });
+    }
+    break;
+}
+
 
 // viwe one photo/video 
 
